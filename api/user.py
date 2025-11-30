@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, request
 import re
+import time
 from common.mysql_oprate import db
+from common.redis_operate import redis_db
 
 app = Flask(__name__)
 
@@ -66,9 +68,9 @@ def user_register():
 @app.route("/login", methods=['POST'])
 def user_login():
     """用户登录"""
-    username = request.values.get("username").strip()
-    password = request.values.get("password").strip()
-    if username and password:
+    username = request.values.get("username", "").strip()
+    password = request.values.get("password", "").strip()
+    if username and password:  # 注意if条件中空串 "" 也是空, 按False处理
         sql1 = f"SELECT username FROM user WHERE username = '{username}'"
         res1 = db.select_db(sql1)
         print(f"查询到用户名 ==>> {res1}")
@@ -78,7 +80,51 @@ def user_login():
         res2 = db.select_db(sql2)
         print(f"获取 {username} 用户信息 == >> {res2}")
         if res2:
-            return jsonify({"code": 0, "msg": "恭喜，登录成功！"})
+            timestamp = int(time.time())  # 获取当前时间戳
+            token = f"{username}{timestamp}"
+            redis_db.handle_redis_token(username, token)  # 把token放到redis中存储
+            login_info = {  # 构造一个字典，将 id/username/token/login_time 返回
+                "id": res2[0]["id"],
+                "username": username,
+                "token": token,
+                "login_time": time.strftime("%Y/%m/%d %H:%M:%S")
+            }
+            return jsonify({"code": 0, "login_info": login_info, "msg": "恭喜，登录成功！"})
         return jsonify({"code": 1002, "msg": "用户名或密码错误！！！"})
     else:
         return jsonify({"code": 1001, "msg": "用户名或密码不能为空！！！"})
+
+
+@app.route("/delete/user/<int:id>", methods=['POST'])
+def user_delete(id):
+    username = request.json.get("username", "").strip()  # 当前登录的管理员用户
+    token = request.json.get("token", "").strip()  # token口令
+    if username and token:
+        redis_token = redis_db.handle_redis_token(username)  # 从redis中取token
+        if redis_token:
+            if redis_token == token:  # 如果从redis中取到的token不为空，且等于请求body中的token
+                sql1 = f"SELECT role FROM user WHERE username = '{username}'"
+                res1 = db.select_db(sql1)
+                print(f"根据用户名 【 {username} 】 查询到用户类型 == >> {res1}")
+                user_role = res1[0]["role"]
+                if user_role == 0:  # 如果当前登录用户是管理员用户
+                    sql2 = f"SELECT * FROM user WHERE id = '{id}'"
+                    res2 = db.select_db(sql2)
+                    print(f"根据用户ID 【 {id} 】 查询到用户信息 ==>> {res2}")
+                    if not res2:  # 如果要删除的用户不存在于数据库中，res2为空
+                        return jsonify({"code": 3005, "msg": "删除的用户ID不存在，无法进行删除，请检查！！！"})
+                    elif res2[0]["role"] == 0:  # 如果要删除的用户是管理员用户，则不允许删除
+                        return jsonify({"code": 3006, "msg": f"用户ID：【 {id} 】，该用户不允许删除！！！"})
+                    else:
+                        sql3 = f"DELETE FROM user WHERE id = {id}"
+                        db.execute_db(sql3)
+                        print(f"删除用户信息SQL ==>> {sql3}")
+                        return jsonify({"code": 0, "msg": "恭喜，删除用户信息成功！"})
+                else:
+                    return jsonify({"code": 3004, "msg": "当前用户不是管理员用户，无法进行操作，请检查！！！"})
+            else:
+                return jsonify({"code": 3003, "msg": "token口令不正确，请检查！！！"})
+        else:
+            return jsonify({"code": 3002, "msg": "当前用户未登录，请检查！！！"})
+    else:
+        return jsonify({"code": 3001, "msg": "管理员用户/token口令不能为空，请检查！！！"})
