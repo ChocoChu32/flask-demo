@@ -2,16 +2,11 @@ import pymysql
 from config.setting import MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWD, MYSQL_DB
 
 
-class MysqlDb():
-
+class MysqlDb:
     def __init__(self, host, port, user, passwd, db):
         # 建立数据库连接
         self.conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            passwd=passwd,
-            db=db
+            host=host, port=port, user=user, passwd=passwd, db=db
         )
         # 通过 cursor() 创建游标对象，并让查询结果以字典格式输出
         self.cur = self.conn.cursor(cursor=pymysql.cursors.DictCursor)

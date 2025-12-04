@@ -2,15 +2,14 @@ import redis
 from config.setting import REDIS_HOST, REDIS_PORT, REDIS_PASSWD, EXPIRE_TIME
 
 
-class RedisDb():
-
+class RedisDb:
     def __init__(self, host, port, passwd):
         # 建立数据库连接
         self.r = redis.Redis(
             host=host,
             port=port,
             password=passwd,
-            decode_responses=True  # get() 得到字符串类型的数据
+            decode_responses=True,  # get() 得到字符串类型的数据
         )
 
     def handle_redis_token(self, key, value=None):
